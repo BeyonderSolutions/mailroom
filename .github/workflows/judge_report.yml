@@ -1,0 +1,52 @@
+name: ⚖️ Judge
+on:
+  pull_request:
+    branches:
+      - main
+      - development
+jobs:
+  judge:
+    name: Judge Report
+    runs-on: [ubuntu-latest]
+    defaults:
+      run:
+        working-directory: ./
+    strategy:
+      matrix:
+        python-version: ["3.10"]
+    steps:
+      - name: Setup repository environment
+        uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install git+https://github.com/BeyonderSolutions/judge.git
+      - name: Run Judge
+        run: |
+          # Assuming judge generates judge_report.md
+          judge
+      - name: Archive Judge Report
+        uses: actions/upload-artifact@v2
+        with:
+          name: judge-report
+          path: judge_report.md
+  comment_pr:
+    name: Comment Pull Request
+    needs: judge
+    permissions:
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Judge Report
+        uses: actions/download-artifact@v2
+        with:
+          name: judge-report
+          path: ./
+      - name: Comment PR
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          filePath: ./judge_report.md

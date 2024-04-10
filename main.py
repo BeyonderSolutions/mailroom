@@ -43,26 +43,42 @@ def search_emails(mail) -> list:
     status, messages = mail.search(None, 'ALL')
     return messages[0].split(b' ')
 
-def save_email(content: bytes, subject: str, email_num: int, is_html: bool):
+def save_email(email_message, email_num: int):
+    subject = decode_header(email_message['Subject'])[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
     filename_safe_subject = "".join(i for i in subject if i not in "\/:*?<>|")
-    filename = os.path.join(DIR_BACKUP, f"email_{email_num}_{filename_safe_subject}.html")
 
-    # Attempt to decode content with utf-8, fallback to latin-1 if utf-8 decoding fails
-    try:
-        content_str = content.decode('utf-8')
-    except UnicodeDecodeError:
-        content_str = content.decode('latin-1')
+    # Create a unique directory for each email based on its number and subject
+    email_dir = os.path.join(DIR_BACKUP, f"email_{email_num}_{filename_safe_subject}")
+    os.makedirs(email_dir, exist_ok=True)
 
-    if not is_html:
-        # Convert plain text newlines to <br> tags for HTML
-        content_str = content_str.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
-        # Wrap plain text in HTML tags
-        content_str = f"<html><body><pre>{content_str}</pre></body></html>"
+    # Save the email body
+    for part in email_message.walk():
+        content_disposition = str(part.get("Content-Disposition"))
+        content_type = part.get_content_type()
+        if content_disposition.startswith('attachment'):
+            attachment_filename = part.get_filename()
+            if attachment_filename:
+                attachment_filename = decode_header(attachment_filename)[0][0]
+                if isinstance(attachment_filename, bytes):
+                    attachment_filename = attachment_filename.decode()
+                attachment_path = os.path.join(email_dir, attachment_filename)
+                # Save attachment
+                with open(attachment_path, 'wb') as f:
+                    f.write(part.get_payload(decode=True))
+        elif content_type in ['text/plain', 'text/html']:
+            content = part.get_payload(decode=True)
+            if content_type == 'text/plain':
+                content = content.decode('utf-8', errors='ignore')
+                content = f"<html><body><pre>{content}</pre></body></html>"
+                content = content.encode('utf-8')
+            filename = os.path.join(email_dir, 'email_content.html')
+            with open(filename, 'wb') as f:
+                f.write(content)
 
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write(content_str)
+    print(f'Saved email and attachments to: {email_dir}')
 
-    print(f'Saved: {filename}')
 
 
 
@@ -82,17 +98,7 @@ def main():
         raw_email = data[0][1]
 
         email_message = email.message_from_bytes(raw_email)
-        content = get_email_content(email_message)
-        is_html = email_message.get_content_maintype() == "text" and email_message.get_content_subtype() == "html"
-
-        if content:
-            subject = decode_header(email_message['Subject'])[0][0]
-            if isinstance(subject, bytes):
-                subject = subject.decode()
-            # Pass the is_html flag to indicate if original content is HTML
-            save_email(content, subject, num, is_html)
-        else:
-            print(f'No content: email_{num}')
+        save_email(email_message, num)
 
     # Logout
     mail.logout()

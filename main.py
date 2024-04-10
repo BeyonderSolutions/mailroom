@@ -2,13 +2,12 @@ import datetime
 import email
 import email.utils
 import imaplib
+import json
 import os
 from email.header import decode_header
 from typing import Union
 
 from rich import print
-
-from secret import account_email, account_password, host
 from src.utils import status
 
 DIR_BACKUP = 'backup'
@@ -44,9 +43,15 @@ def connect_to_server(imap_host, user, password) -> imaplib.IMAP4_SSL:
 def search_emails(mail) -> list:
     mail.select('inbox')  # Select the mailbox you want to back up
     status, messages = mail.search(None, 'ALL')
-    return messages[0].split(b' ')
+    if status != 'OK':
+        print("No messages found!")
+        return []
+    message_list = messages[0].split(b' ')
+    if message_list == [b'']:
+        return []
+    return message_list
 
-def save_email(email_message, email_num: int):
+def save_email(email_message, email_num: int, backup_dir: str):
     # Extract date and format it
     date_tuple = email.utils.parsedate_tz(email_message['Date'])
     if date_tuple:
@@ -67,9 +72,8 @@ def save_email(email_message, email_num: int):
 
     # Create a unique directory for each email based on date, sender, and subject
     email_dir_name = f"{formatted_date} - {sender_email} - {filename_safe_subject}"
-    email_dir = os.path.join(DIR_BACKUP, email_dir_name)
+    email_dir = os.path.join(backup_dir, email_dir_name)
     os.makedirs(email_dir, exist_ok=True)
-
     # Save the email body
     for part in email_message.walk():
         content_disposition = str(part.get("Content-Disposition"))
@@ -98,27 +102,49 @@ def save_email(email_message, email_num: int):
 
 
 
-
 def main():
-    # Create a directory for emails if it doesn't exist
-    if not os.path.exists(DIR_BACKUP):
-        os.makedirs(DIR_BACKUP)
+    # Load the configuration from config.json
+    with open('config.json', 'r') as config_file:
+        config = json.load(config_file)
 
-    # Login to IMAP server
-    mail = connect_to_server(host, account_email, account_password)
+    for account in config['accounts']:
+        host = account['host']
+        user_email = account['email']
+        user_password = account['password']
 
-    # Search for all emails in the inbox
-    messages = search_emails(mail)
+        # Create a backup directory specific to the account
+        backup_dir = os.path.join(DIR_BACKUP, user_email)
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
 
-    for num, mail_id in enumerate(messages, 1):
-        status, data = mail.fetch(mail_id, '(BODY.PEEK[])')
-        raw_email = data[0][1]
+        # Login to IMAP server for the current account
+        mail = connect_to_server(host, user_email, user_password)
 
-        email_message = email.message_from_bytes(raw_email)
-        save_email(email_message, num)
+        # Search for all emails in the inbox
+        messages = search_emails(mail)
+        if not messages:
+            print(f"No messages to fetch for {user_email}")
+            continue
 
-    # Logout
-    mail.logout()
+        for num, mail_id in enumerate(messages, 1):
+            try:
+                status, data = mail.fetch(mail_id, '(BODY.PEEK[])')
+                if status != 'OK':
+                    print(f"Failed to fetch email with ID {mail_id.decode()}")
+                    continue
+                raw_email = data[0][1]
+
+                email_message = email.message_from_bytes(raw_email)
+                save_email(email_message, num, backup_dir)  # Pass the backup directory to the save_email function
+            except imaplib.IMAP4.error as e:
+                print(f"An error occurred while fetching email with ID {mail_id.decode()}: {e}")
+
+
+        # Logout
+        mail.logout()
+
+        print(f'Finished backup for account: {user_email}')
+
 
 if __name__ == "__main__":
     main()

@@ -1,8 +1,11 @@
+import datetime
 import email
+import email.utils
 import imaplib
 import os
 from email.header import decode_header
 from typing import Union
+
 from rich import print
 
 from secret import account_email, account_password, host
@@ -44,13 +47,27 @@ def search_emails(mail) -> list:
     return messages[0].split(b' ')
 
 def save_email(email_message, email_num: int):
+    # Extract date and format it
+    date_tuple = email.utils.parsedate_tz(email_message['Date'])
+    if date_tuple:
+        local_date = datetime.datetime.fromtimestamp(email.utils.mktime_tz(date_tuple))
+        formatted_date = local_date.strftime('%Y-%m-%d %H:%M')
+    else:
+        formatted_date = 'unknown_date'
+
+    # Extract sender
+    sender = email_message.get('From', 'unknown_sender')
+    sender_email = email.utils.parseaddr(sender)[1]
+
+    # Decode subject
     subject = decode_header(email_message['Subject'])[0][0]
     if isinstance(subject, bytes):
-        subject = subject.decode()
+        subject = subject.decode(errors='ignore')
     filename_safe_subject = "".join(i for i in subject if i not in "\/:*?<>|")
 
-    # Create a unique directory for each email based on its number and subject
-    email_dir = os.path.join(DIR_BACKUP, f"email_{email_num}_{filename_safe_subject}")
+    # Create a unique directory for each email based on date, sender, and subject
+    email_dir_name = f"{formatted_date} - {sender_email} - {filename_safe_subject}"
+    email_dir = os.path.join(DIR_BACKUP, email_dir_name)
     os.makedirs(email_dir, exist_ok=True)
 
     # Save the email body

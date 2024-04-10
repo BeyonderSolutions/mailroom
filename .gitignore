@@ -1,4 +1,6 @@
 secret.py
+backup/
+config.json
 
 **.temp/
 _ignore/

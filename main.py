@@ -10,7 +10,6 @@ from src.utils import status
 
 DIR_BACKUP = 'backup'
 
-# Function to get the HTML part of the email
 def get_html_part(msg) -> Union[bytes, None]:
     if msg.is_multipart():
         for part in msg.walk():
@@ -23,49 +22,51 @@ def get_html_part(msg) -> Union[bytes, None]:
             return msg.get_payload(decode=True)
     return None
 
-# Create a directory for emails if it doesn't exist
-email_dir = DIR_BACKUP
-if not os.path.exists(email_dir):
-    os.makedirs(email_dir)
+def connect_to_server(imap_host, user, password) -> imaplib.IMAP4_SSL:
+    mail = imaplib.IMAP4_SSL(imap_host)
+    mail.login(user, password)
+    return mail
 
-# Login to IMAP server
-imap_host = host
-user = account_email  # Your email
-password = account_password  # Your email account password
+def search_emails(mail) -> list:
+    mail.select('inbox')  # Select the mailbox you want to back up
+    status, messages = mail.search(None, 'ALL')
+    return messages[0].split(b' ')
 
-mail = imaplib.IMAP4_SSL(imap_host)
-mail.login(user, password)
-mail.select('inbox')  # Select the mailbox you want to back up
+def save_email(html_part: bytes, subject: str, email_num: int):
+    filename_safe_subject = "".join(i for i in subject if i not in "\/:*?<>|")
+    filename = os.path.join(DIR_BACKUP, f"email_{email_num}_{filename_safe_subject}.html")
+    with open(filename, 'wb') as f:
+        f.write(html_part)
+    print(f'Saved: {filename}')
 
-# Search for all emails in the inbox
-status, messages = mail.search(None, 'ALL')
-messages = messages[0].split(b' ')
+def main():
+    # Create a directory for emails if it doesn't exist
+    if not os.path.exists(DIR_BACKUP):
+        os.makedirs(DIR_BACKUP)
 
-for num, mail_id in enumerate(messages, 1):
-    # Fetch each email (RFC822 protocol for fetching full email)
-    status, data = mail.fetch(mail_id, '(RFC822)')
-    raw_email = data[0][1]
+    # Login to IMAP server
+    mail = connect_to_server(host, account_email, account_password)
 
-    # Parse the raw email using email library
-    email_message = email.message_from_bytes(raw_email)
-    html_part = get_html_part(email_message)
+    # Search for all emails in the inbox
+    messages = search_emails(mail)
 
-    if html_part:
-        # Decode email subject for filename (optional)
-        subject = decode_header(email_message['Subject'])[0][0]
-        if isinstance(subject, bytes):
-            subject = subject.decode()
-        # Replace any filesystem-unsafe characters in the subject
-        filename_safe_subject = "".join(i for i in subject if i not in "\/:*?<>|")
-        filename = os.path.join(email_dir, f"email_{num}_{filename_safe_subject}.html")
+    for num, mail_id in enumerate(messages, 1):
+        status, data = mail.fetch(mail_id, '(RFC822)')
+        raw_email = data[0][1]
 
-        # Save the HTML part to a file
-        with open(filename, 'wb') as f:
-            f.write(html_part)
+        email_message = email.message_from_bytes(raw_email)
+        html_part = get_html_part(email_message)
 
-        print(f'Saved: {filename}')
-    else:
-        print(f'No HTML content: email_{num}')
+        if html_part:
+            subject = decode_header(email_message['Subject'])[0][0]
+            if isinstance(subject, bytes):
+                subject = subject.decode()
+            save_email(html_part, subject, num)
+        else:
+            print(f'No HTML content: email_{num}')
 
-# Logout
-mail.logout()
+    # Logout
+    mail.logout()
+
+if __name__ == "__main__":
+    main()

@@ -1,2 +1,11 @@
+[judge]
+defaults = ["flake8"]
+
 [flake8]
-ignore = ["W503"]
+ignore = [
+    "E402",  # module level import not at top of file
+    "F401",  # imported but unused
+    "F403",  # unused import
+    "W293",  # blank line contains whitespace
+    "W503"   # line break before binary operator
+]

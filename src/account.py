@@ -29,7 +29,10 @@ def process_account(account: dict, backup_root_dir: str) -> None:
             email_message = email.message_from_bytes(data[0][1])
             save_email(email_message, num, backup_dir)
         except imaplib.IMAP4.error as e:
-            print(f"An error occurred while fetching email with ID {mail_id.decode()}: {e}")
+            print(
+                "An error occurred while fetching email with ID "
+                f"{mail_id.decode()}: {e}"
+            )
 
     mail.logout()
     print(f'Finished backup for account: {user_email}')

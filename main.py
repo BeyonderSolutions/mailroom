@@ -51,7 +51,8 @@ def main():
     messages = search_emails(mail)
 
     for num, mail_id in enumerate(messages, 1):
-        status, data = mail.fetch(mail_id, '(RFC822)')
+        # Use the PEEK command to fetch the email without marking it as read
+        status, data = mail.fetch(mail_id, '(BODY.PEEK[])')  # Updated line here
         raw_email = data[0][1]
 
         email_message = email.message_from_bytes(raw_email)

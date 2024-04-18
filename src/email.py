@@ -79,6 +79,7 @@ def save_attachments_and_body(email_message: Message, email_dir: str) -> None:
                 attachment_filename = decode_header(attachment_filename)[0][0]
                 if isinstance(attachment_filename, bytes):
                     attachment_filename = attachment_filename.decode()
+                attachment_filename = sanitize_filename(attachment_filename)
                 attachment_path = os.path.join(email_dir, attachment_filename)
                 # Save attachment
                 with open(attachment_path, 'wb') as f:
@@ -107,3 +108,12 @@ def save_email(
     )
     save_attachments_and_body(email_message, email_dir)
     print(f'Saved email and attachments to: {email_dir}')
+
+
+def sanitize_filename(filename):
+    # Remove path if present
+    filename = os.path.basename(filename)
+    # Replace or remove other invalid characters
+    filename = \
+        "".join(char for char in filename if char.isalnum() or char in "._- ")
+    return filename
